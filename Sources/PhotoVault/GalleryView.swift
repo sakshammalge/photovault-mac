@@ -12,6 +12,8 @@ struct GalleryView: View {
     @State private var rangeStart = Calendar.current.date(byAdding: .month, value: -1, to: Date()) ?? Date()
     @State private var rangeEnd = Date()
     @State private var showingRange = false
+    /// Days folded down to a single row of thumbnails. Empty means every day is expanded.
+    @State private var collapsedDays: Set<Date> = []
 
     private var isFiltering: Bool { !searchText.trimmingCharacters(in: .whitespaces).isEmpty || useDateRange }
 
@@ -68,6 +70,16 @@ struct GalleryView: View {
                     .padding(14)
                     .frame(width: 240)
                 }
+                Button {
+                    if collapsedDays.isEmpty {
+                        collapsedDays = Set(GalleryModel.group(visibleItems).map(\.id))
+                    } else {
+                        collapsedDays = []
+                    }
+                } label: {
+                    Image(systemName: collapsedDays.isEmpty ? "rectangle.compress.vertical" : "rectangle.expand.vertical")
+                }
+                .help(collapsedDays.isEmpty ? "Collapse all days to one row" : "Expand all days")
                 Slider(value: $cellSize, in: 80...320)
                     .frame(width: 110)
                     .help("Thumbnail size")
@@ -116,38 +128,64 @@ struct GalleryView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             let shown = visibleItems
-            ScrollView {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: cellSize), spacing: 2)],
-                          spacing: 2, pinnedViews: [.sectionHeaders]) {
-                    ForEach(GalleryModel.group(shown)) { day in
-                        Section {
-                            ForEach(day.items) { item in
-                                ThumbnailCell(item: item)
-                                    .onTapGesture {
-                                        viewerIndex = shown.firstIndex(of: item)
+            GeometryReader { proxy in
+                // Mirrors how the adaptive grid below lays out its columns.
+                let perRow = max(1, Int((proxy.size.width + 2) / (cellSize + 2)))
+                ScrollView {
+                    LazyVStack(spacing: 2, pinnedViews: [.sectionHeaders]) {
+                        ForEach(GalleryModel.group(shown)) { day in
+                            let collapsed = collapsedDays.contains(day.id)
+                            let hidden = collapsed ? max(0, day.items.count - perRow) : 0
+                            Section {
+                                LazyVGrid(columns: [GridItem(.adaptive(minimum: cellSize), spacing: 2)], spacing: 2) {
+                                    ForEach(collapsed ? Array(day.items.prefix(perRow)) : day.items) { item in
+                                        ThumbnailCell(item: item)
+                                            .onTapGesture {
+                                                viewerIndex = shown.firstIndex(of: item)
+                                            }
+                                            .contextMenu {
+                                                Button(gallery.isFavorite(item) ? "Remove from Favorites" : "Favorite") {
+                                                    gallery.toggleFavorite(item)
+                                                }
+                                                Button("Show in Finder") {
+                                                    NSWorkspace.shared.activateFileViewerSelecting([item.url])
+                                                }
+                                            }
                                     }
-                                    .contextMenu {
-                                        Button(gallery.isFavorite(item) ? "Remove from Favorites" : "Favorite") {
-                                            gallery.toggleFavorite(item)
-                                        }
-                                        Button("Show in Finder") {
-                                            NSWorkspace.shared.activateFileViewerSelecting([item.url])
-                                        }
+                                }
+                            } header: {
+                                HStack {
+                                    Button { toggle(day.id) } label: {
+                                        Image(systemName: "chevron.right")
+                                            .rotationEffect(.degrees(collapsed ? 0 : 90))
+                                            .frame(width: 14)
                                     }
+                                    .buttonStyle(.plain)
+                                    .help(collapsed ? "Expand this day" : "Collapse to one row")
+                                    Text(day.id.formatted(date: .complete, time: .omitted)).font(.headline)
+                                    Text("\(day.items.count)").font(.subheadline).foregroundStyle(.secondary)
+                                    Spacer()
+                                    if hidden > 0 {
+                                        Button("View more (\(hidden))") { toggle(day.id) }
+                                            .buttonStyle(.link)
+                                    }
+                                }
+                                .contentShape(Rectangle())
+                                .onTapGesture { toggle(day.id) }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(.bar)
                             }
-                        } header: {
-                            HStack {
-                                Text(day.id.formatted(date: .complete, time: .omitted)).font(.headline)
-                                Text("\(day.items.count)").font(.subheadline).foregroundStyle(.secondary)
-                                Spacer()
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(.bar)
                         }
                     }
                 }
             }
+        }
+    }
+
+    private func toggle(_ day: Date) {
+        withAnimation(.easeInOut(duration: 0.15)) {
+            if collapsedDays.contains(day) { collapsedDays.remove(day) } else { collapsedDays.insert(day) }
         }
     }
 }
