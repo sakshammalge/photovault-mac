@@ -1,6 +1,15 @@
 import AppKit
 import SwiftUI
 
+/// Screenshot/demo mode: `PHOTOVAULT_DEMO_FOLDER=/path` shows that folder instead of any
+/// iPhone backup, never talks to a connected phone, and leaves saved settings alone.
+/// `PHOTOVAULT_DEMO_SECTION` (gallery, favorites, map, duplicates) picks the first view.
+enum Demo {
+    static let folder: URL? = ProcessInfo.processInfo.environment["PHOTOVAULT_DEMO_FOLDER"]
+        .map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath, isDirectory: true) }
+    static let section = ProcessInfo.processInfo.environment["PHOTOVAULT_DEMO_SECTION"]
+}
+
 @main
 struct PhotoVaultApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
@@ -13,7 +22,7 @@ struct PhotoVaultApp: App {
         _library = StateObject(wrappedValue: library)
         _devices = StateObject(wrappedValue: DeviceManager(library: library))
         // Until a device is chosen the gallery points at a folder that doesn't exist yet.
-        let start = library.selected?.folder
+        let start = Demo.folder ?? library.selected?.folder
             ?? DeviceLibrary.systemPicturesFolder.appendingPathComponent("iPhone", isDirectory: true)
         _gallery = StateObject(wrappedValue: GalleryModel(root: start))
     }
@@ -25,7 +34,7 @@ struct PhotoVaultApp: App {
                 .environmentObject(devices)
                 .environmentObject(gallery)
                 .frame(minWidth: 760, minHeight: 480)
-                .onAppear { devices.start() }
+                .onAppear { if Demo.folder == nil { devices.start() } }
         }
     }
 }
