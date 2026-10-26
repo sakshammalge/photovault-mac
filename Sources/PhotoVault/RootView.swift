@@ -6,7 +6,14 @@ struct RootView: View {
     @EnvironmentObject private var library: DeviceLibrary
     @EnvironmentObject private var devices: DeviceManager
     @EnvironmentObject private var gallery: GalleryModel
-    @State private var selection: Section? = .gallery
+    @State private var selection: Section? = {
+        switch Demo.section {
+        case "favorites": return .favorites
+        case "map": return .map
+        case "duplicates": return .duplicates
+        default: return .gallery
+        }
+    }()
 
     var body: some View {
         NavigationSplitView {
@@ -37,7 +44,7 @@ struct RootView: View {
     }
 
     private func showSelectedDevice() {
-        if let folder = library.selected?.folder { gallery.switchRoot(to: folder) }
+        if Demo.folder == nil, let folder = library.selected?.folder { gallery.switchRoot(to: folder) }
     }
 
     private var sidebar: some View {
