@@ -3,6 +3,7 @@ import SwiftUI
 struct RootView: View {
     enum Section: Hashable { case gallery, favorites, map, duplicates, device }
 
+    @EnvironmentObject private var library: DeviceLibrary
     @EnvironmentObject private var devices: DeviceManager
     @EnvironmentObject private var gallery: GalleryModel
     @State private var selection: Section? = .gallery
@@ -12,14 +13,31 @@ struct RootView: View {
             sidebar
                 .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 280)
         } detail: {
-            switch selection ?? .gallery {
-            case .gallery: GalleryView()
-            case .favorites: GalleryView(favoritesOnly: true)
-            case .map: MapView()
-            case .duplicates: DuplicatesView()
-            case .device: DeviceView()
+            Group {
+                switch selection ?? .gallery {
+                case .gallery: GalleryView()
+                case .favorites: GalleryView(favoritesOnly: true)
+                case .map: MapView()
+                case .duplicates: DuplicatesView()
+                case .device: DeviceView()
+                }
             }
+            .id(gallery.root)   // start each view fresh for the chosen device
         }
+        .onAppear { showSelectedDevice() }
+        .onChange(of: library.selectedID) { _ in showSelectedDevice() }
+        .alert("Use your existing backup for \(devices.pendingDeviceName ?? "this iPhone")?",
+               isPresented: Binding(get: { devices.legacyPrompt != nil }, set: { _ in })) {
+            Button("Use Existing Folder") { devices.resolveLegacy(useExisting: true) }
+            Button("Start a New Folder") { devices.resolveLegacy(useExisting: false) }
+        } message: {
+            let folder = ((devices.legacyPrompt ?? "") as NSString).abbreviatingWithTildeInPath
+            Text("Photos already saved in \(folder) can become this iPhone's backup. No files are moved or changed. Otherwise this iPhone gets its own folder in Pictures, and the old folder stays available in the device menu.")
+        }
+    }
+
+    private func showSelectedDevice() {
+        if let folder = library.selected?.folder { gallery.switchRoot(to: folder) }
     }
 
     private var sidebar: some View {
@@ -51,7 +69,24 @@ struct RootView: View {
             }
         }
         .listStyle(.sidebar)
+        .safeAreaInset(edge: .top, spacing: 0) { devicePicker.padding([.horizontal, .top], 12).padding(.bottom, 4) }
         .safeAreaInset(edge: .bottom, spacing: 0) { backupStatus }
+    }
+
+    /// Chooses whose backup the gallery, favorites, map and duplicates views show.
+    private var devicePicker: some View {
+        Picker("", selection: Binding(
+            get: { library.selectedID ?? "" },
+            set: { library.selectedID = $0 }
+        )) {
+            ForEach(library.devices) { device in
+                Label(device.name, systemImage: "iphone").tag(device.id)
+            }
+        }
+        .pickerStyle(.menu)
+        .labelsHidden()
+        .disabled(library.devices.isEmpty)
+        .help("Which iPhone's backup to browse")
     }
 
     @ViewBuilder

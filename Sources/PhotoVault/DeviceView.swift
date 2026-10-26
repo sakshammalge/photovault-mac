@@ -204,6 +204,6 @@ struct DeviceView: View {
 
     private var lastBackupText: String {
         let date = devices.lastBackupDate.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "never"
-        return "Last backup \(date) · saving to \((devices.backupFolder.path as NSString).abbreviatingWithTildeInPath)"
+        return "Last backup \(date) · saving to \(((devices.backupFolder?.path ?? "") as NSString).abbreviatingWithTildeInPath)"
     }
 }

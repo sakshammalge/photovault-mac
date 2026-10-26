@@ -46,10 +46,16 @@ final class DeviceManager: NSObject, ObservableObject {
         didSet { UserDefaults.standard.set(autoBackupEnabled, forKey: "autoBackupEnabled") }
     }
 
-    /// Where backups are saved.
-    let backupFolder = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent("Pictures/IphoneBackup", isDirectory: true)
-    private lazy var store = BackupStore(root: backupFolder)
+    /// Set while a newly connected phone must be matched with the old IphoneBackup folder.
+    @Published private(set) var legacyPrompt: String?
+
+    let library: DeviceLibrary
+    /// The connected phone's backup folder (`~/Pictures/{device name}`), once it is known.
+    private(set) var backupFolder: URL?
+    private var store: BackupStore?
+    /// The connected phone while a legacy-folder decision is pending.
+    private var pendingIdentity: (id: String, name: String)?
+    var pendingDeviceName: String? { pendingIdentity?.name }
     private var cancelRequested = false
     /// The running backup was started automatically, so its outcome is announced with a notification.
     private var backupIsAutomatic = false
@@ -58,6 +64,11 @@ final class DeviceManager: NSObject, ObservableObject {
 
     private let browser = ICDeviceBrowser()
     private var camera: ICCameraDevice?
+
+    init(library: DeviceLibrary) {
+        self.library = library
+        super.init()
+    }
 
     func start() {
         guard !browser.isBrowsing else { return }
@@ -81,6 +92,7 @@ final class DeviceManager: NSObject, ObservableObject {
     func startBackup(automatic: Bool = false) {
         guard backup == nil else { return }
         let queue = newItems.sorted { ($0.created ?? .distantPast) < ($1.created ?? .distantPast) }
+        guard let store, let backupFolder else { return }
         guard !queue.isEmpty else {
             lastBackupResult = "Everything is already backed up."
             return
@@ -104,12 +116,13 @@ final class DeviceManager: NSObject, ObservableObject {
     }
 
     func isBackedUp(_ item: MediaItem) -> Bool {
-        store.contains(item.backupKey)
+        store?.contains(item.backupKey) ?? false
     }
 
     /// Items whose own file, or a Live Photo / edit sidecar, isn't safely in the backup.
     var newItems: [MediaItem] {
-        items.filter { item in
+        guard let store else { return items }
+        return items.filter { item in
             if !store.contains(item.backupKey) { return true }
             let sidecars = item.file.sidecarFiles?.compactMap { $0 as? ICCameraFile } ?? []
             return sidecars.contains {
@@ -121,7 +134,7 @@ final class DeviceManager: NSObject, ObservableObject {
     /// Rechecks the backup folder against the backup record, so anything deleted or
     /// damaged there shows up as "not backed up" and is copied again by the next backup.
     func verifyBackup() {
-        guard backup == nil else { return }
+        guard backup == nil, let store else { return }
         let result = store.verify()
         objectWillChange.send()
         if result.problemCount == 0 {
@@ -140,7 +153,7 @@ final class DeviceManager: NSObject, ObservableObject {
         return false
     }
 
-    var lastBackupDate: Date? { store.index.lastBackup }
+    var lastBackupDate: Date? { store?.index.lastBackup }
 
     private func backUpNext(_ remaining: ArraySlice<MediaItem>) {
         guard let item = remaining.first, !cancelRequested, camera != nil else {
@@ -152,7 +165,7 @@ final class DeviceManager: NSObject, ObservableObject {
         let sidecars = item.file.sidecarFiles?.compactMap { $0 as? ICCameraFile } ?? []
         copyFiles([item.file] + sidecars, created: item.created) { ok in
             if ok { self.backup?.done += 1 } else { self.backup?.failed.append(item.name) }
-            self.store.save()
+            self.store?.save()
             self.objectWillChange.send()
             self.backUpNext(remaining.dropFirst())
         }
@@ -169,6 +182,7 @@ final class DeviceManager: NSObject, ObservableObject {
     private func copyFile(_ file: ICCameraFile, created: Date?, completion: @escaping (Bool) -> Void) {
         let name = file.name ?? "Untitled"
         let size = file.fileSize
+        guard let store else { return completion(false) }
         let key = BackupStore.key(name: name, size: size, created: created)
         if store.contains(key) { return completion(true) }
         if let existing = store.existingCopy(name: name, size: size, created: created) {
@@ -183,14 +197,14 @@ final class DeviceManager: NSObject, ObservableObject {
         ]) { filename, error in
             DispatchQueue.main.async {
                 let downloaded = staging.appendingPathComponent(filename ?? name)
-                guard error == nil, self.store.fileSize(at: downloaded) == size else {
+                guard error == nil, store.fileSize(at: downloaded) == size else {
                     NSLog("PhotoVault: \(name) failed: \(error?.localizedDescription ?? "size mismatch")")
                     try? FileManager.default.removeItem(at: downloaded)
                     return completion(false)
                 }
                 do {
-                    let placed = try self.store.place(downloaded, name: name, created: created)
-                    self.store.record(key: key, at: placed, size: size)
+                    let placed = try store.place(downloaded, name: name, created: created)
+                    store.record(key: key, at: placed, size: size)
                     completion(true)
                 } catch {
                     NSLog("PhotoVault: couldn't move \(name): \(error)")
@@ -202,7 +216,7 @@ final class DeviceManager: NSObject, ObservableObject {
 
     private func finishBackup(cancelled: Bool) {
         guard let progress = backup else { return }
-        store.finish()
+        store?.finish()
         var summary = "Backed up \(progress.done) of \(progress.total) items"
         if cancelled { summary += " (stopped early)" }
         if !progress.failed.isEmpty {
@@ -226,6 +240,30 @@ final class DeviceManager: NSObject, ObservableObject {
         } else {
             Notifier.post(title: "PhotoVault backup complete", body: "Backed up \(items) from your iPhone.")
         }
+    }
+
+    /// Backs this phone up into its own folder and shows it in the gallery.
+    private func activate(_ device: KnownDevice) {
+        backupFolder = device.folder
+        store = BackupStore(root: device.folder)
+        library.selectedID = device.id
+    }
+
+    private func startAutoBackupIfNeeded() {
+        guard autoBackupEnabled, !autoBackupAttempted, store != nil, case .ready = state else { return }
+        autoBackupAttempted = true
+        startBackup(automatic: true)
+    }
+
+    /// Answer to "use the existing IphoneBackup folder for this phone?". Files are never moved.
+    func resolveLegacy(useExisting: Bool) {
+        guard let identity = pendingIdentity else { return }
+        pendingIdentity = nil
+        legacyPrompt = nil
+        let device = (useExisting ? library.claimLegacy(id: identity.id, name: identity.name) : nil)
+            ?? library.add(id: identity.id, name: identity.name)
+        activate(device)
+        startAutoBackupIfNeeded()
     }
 
     private func rebuildItems(from camera: ICCameraDevice) {
@@ -263,6 +301,8 @@ extension DeviceManager: ICDeviceBrowserDelegate {
     private func disconnect() {
         camera = nil
         autoBackupAttempted = false
+        pendingIdentity = nil
+        legacyPrompt = nil
         items = []
         state = .searching
     }
@@ -297,12 +337,22 @@ extension DeviceManager: ICCameraDeviceDelegate {
     // MARK: ICCameraDeviceDelegate
 
     func deviceDidBecomeReady(withCompleteContentCatalog device: ICCameraDevice) {
+        let name = device.name ?? "iPhone"
+        let id = [device.serialNumberString, device.uuidString].compactMap { $0 }.first { !$0.isEmpty } ?? name
+        backupFolder = nil
+        store = nil
         rebuildItems(from: device)
-        state = .ready(device.name ?? "iPhone")
-        if autoBackupEnabled, !autoBackupAttempted {
-            autoBackupAttempted = true
-            startBackup(automatic: true)
+        if let known = library.existing(id: id, name: name) {
+            activate(known)
+        } else if let legacy = library.unclaimedLegacy {
+            // A backup from before per-device folders exists: ask before using it.
+            pendingIdentity = (id, name)
+            legacyPrompt = legacy.path
+        } else {
+            activate(library.add(id: id, name: name))
         }
+        state = .ready(name)
+        startAutoBackupIfNeeded()
     }
 
     func cameraDevice(_ camera: ICCameraDevice, didAdd items: [ICCameraItem]) {
