@@ -10,10 +10,19 @@ struct MediaItem: Identifiable, Hashable {
     let uti: String?
     let file: ICCameraFile
 
+    var backupKey: String { BackupStore.key(name: name, size: size, created: created) }
+
     var isVideo: Bool {
         guard let uti else { return false }
         return uti.contains("movie") || uti.contains("video") || uti.contains("mpeg")
     }
+}
+
+struct BackupProgress {
+    let total: Int
+    var done = 0
+    var failed: [String] = []
+    var current: String?
 }
 
 enum ConnectionState: Equatable {
@@ -30,11 +39,14 @@ enum ConnectionState: Equatable {
 final class DeviceManager: NSObject, ObservableObject {
     @Published private(set) var state: ConnectionState = .searching
     @Published private(set) var items: [MediaItem] = []
-    @Published var lastDownloadResult: String?
+    @Published private(set) var backup: BackupProgress?
+    @Published private(set) var lastBackupResult: String?
 
-    /// Where backups are saved. Used by the test download now and the full backup later.
+    /// Where backups are saved.
     let backupFolder = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Pictures/IphoneBackup", isDirectory: true)
+    private lazy var store = BackupStore(root: backupFolder)
+    private var cancelRequested = false
 
     private let browser = ICDeviceBrowser()
     private var camera: ICCameraDevice?
@@ -55,28 +67,111 @@ final class DeviceManager: NSObject, ObservableObject {
         rebuildItems(from: camera)
     }
 
-    /// Copies one file to the backup folder and checks the byte count
-    /// matches what the phone reported, to confirm we get untouched originals.
-    func testDownload(_ item: MediaItem) {
-        let dir = backupFolder
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        lastDownloadResult = "Downloading \(item.name)…"
+    /// Copies every item not yet in the backup folder, oldest first. Each file is
+    /// downloaded to a staging folder, its size checked against the phone, then moved
+    /// into YEAR/MONTH. Nothing on the phone is changed or deleted.
+    func startBackup() {
+        guard backup == nil else { return }
+        let queue = newItems.sorted { ($0.created ?? .distantPast) < ($1.created ?? .distantPast) }
+        guard !queue.isEmpty else {
+            lastBackupResult = "Everything is already backed up."
+            return
+        }
+        do {
+            try store.prepare()
+        } catch {
+            lastBackupResult = "Can't write to \(backupFolder.path): \(error.localizedDescription)"
+            return
+        }
+        cancelRequested = false
+        lastBackupResult = nil
+        backup = BackupProgress(total: queue.count)
+        backUpNext(queue[...])
+    }
 
-        item.file.requestDownload(options: [
-            .downloadsDirectoryURL: dir,
+    func cancelBackup() {
+        cancelRequested = true
+    }
+
+    func isBackedUp(_ item: MediaItem) -> Bool {
+        store.contains(item.backupKey)
+    }
+
+    var newItems: [MediaItem] {
+        items.filter { !store.contains($0.backupKey) }
+    }
+
+    var lastBackupDate: Date? { store.index.lastBackup }
+
+    private func backUpNext(_ remaining: ArraySlice<MediaItem>) {
+        guard let item = remaining.first, !cancelRequested, camera != nil else {
+            finishBackup(cancelled: cancelRequested || camera == nil)
+            return
+        }
+        backup?.current = item.name
+        // Live Photo videos and edit files (.AAE) travel with their photo.
+        let sidecars = item.file.sidecarFiles?.compactMap { $0 as? ICCameraFile } ?? []
+        copyFiles([item.file] + sidecars, created: item.created) { ok in
+            if ok { self.backup?.done += 1 } else { self.backup?.failed.append(item.name) }
+            self.store.save()
+            self.objectWillChange.send()
+            self.backUpNext(remaining.dropFirst())
+        }
+    }
+
+    private func copyFiles(_ files: [ICCameraFile], created: Date?, completion: @escaping (Bool) -> Void) {
+        guard let file = files.first else { return completion(true) }
+        copyFile(file, created: created) { ok in
+            guard ok else { return completion(false) }
+            self.copyFiles(Array(files.dropFirst()), created: created, completion: completion)
+        }
+    }
+
+    private func copyFile(_ file: ICCameraFile, created: Date?, completion: @escaping (Bool) -> Void) {
+        let name = file.name ?? "Untitled"
+        let size = file.fileSize
+        let key = BackupStore.key(name: name, size: size, created: created)
+        if store.contains(key) { return completion(true) }
+        if let existing = store.existingCopy(name: name, size: size, created: created) {
+            store.record(key: key, at: existing, size: size)
+            return completion(true)
+        }
+
+        let staging = store.incomingDir
+        file.requestDownload(options: [
+            .downloadsDirectoryURL: staging,
             .overwrite: true,
         ]) { filename, error in
             DispatchQueue.main.async {
-                if let error {
-                    self.lastDownloadResult = "Download failed: \(error.localizedDescription)"
-                    return
+                let downloaded = staging.appendingPathComponent(filename ?? name)
+                guard error == nil, self.store.fileSize(at: downloaded) == size else {
+                    NSLog("PhotoVault: \(name) failed: \(error?.localizedDescription ?? "size mismatch")")
+                    try? FileManager.default.removeItem(at: downloaded)
+                    return completion(false)
                 }
-                let url = dir.appendingPathComponent(filename ?? item.name)
-                let written = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int64) ?? -1
-                let match = written == item.size ? "matches the phone's original size" : "DIFFERS from the phone's size (\(item.size) bytes)"
-                self.lastDownloadResult = "Saved \(url.lastPathComponent): \(written) bytes, \(match)."
+                do {
+                    let placed = try self.store.place(downloaded, name: name, created: created)
+                    self.store.record(key: key, at: placed, size: size)
+                    completion(true)
+                } catch {
+                    NSLog("PhotoVault: couldn't move \(name): \(error)")
+                    completion(false)
+                }
             }
         }
+    }
+
+    private func finishBackup(cancelled: Bool) {
+        guard let progress = backup else { return }
+        store.finish()
+        var summary = "Backed up \(progress.done) of \(progress.total) items"
+        if cancelled { summary += " (stopped early)" }
+        if !progress.failed.isEmpty {
+            summary += ". \(progress.failed.count) failed and will be retried next time: "
+                + progress.failed.prefix(5).joined(separator: ", ")
+        }
+        lastBackupResult = summary + "."
+        backup = nil
     }
 
     private func rebuildItems(from camera: ICCameraDevice) {

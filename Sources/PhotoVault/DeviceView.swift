@@ -30,12 +30,20 @@ struct DeviceView: View {
             }
             Spacer()
             Button("Refresh") { devices.refresh() }
-                .disabled(!isReady)
+                .disabled(!isReady || devices.backup != nil)
         }
     }
 
     private var table: some View {
         Table(devices.items, selection: $selection) {
+            TableColumn("") { item in
+                if devices.isBackedUp(item) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                        .help("Backed up")
+                }
+            }
+            .width(20)
             TableColumn("Name") { item in
                 Label(item.name, systemImage: item.isVideo ? "video" : "photo")
             }
@@ -53,17 +61,43 @@ struct DeviceView: View {
     }
 
     private var footer: some View {
-        HStack {
-            Button("Test download selected") {
-                if let item = devices.items.first(where: { $0.id == selection }) {
-                    devices.testDownload(item)
+        HStack(spacing: 12) {
+            if let progress = devices.backup {
+                ProgressView(value: Double(progress.done + progress.failed.count), total: Double(progress.total))
+                    .frame(maxWidth: 240)
+                Text(progressText(progress))
+                    .font(.callout)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                Spacer()
+                Button("Stop") { devices.cancelBackup() }
+            } else {
+                let count = devices.newItems.count
+                Button(count == 0 ? "Up to date" : "Back Up \(count) New Item\(count == 1 ? "" : "s")") {
+                    devices.startBackup()
                 }
-            }
-            .disabled(selection == nil)
-            if let result = devices.lastDownloadResult {
-                Text(result).font(.callout).foregroundStyle(.secondary)
+                .buttonStyle(.borderedProminent)
+                .disabled(count == 0)
+                VStack(alignment: .leading, spacing: 2) {
+                    if let result = devices.lastBackupResult {
+                        Text(result).font(.callout)
+                    }
+                    Text(lastBackupText).font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
             }
         }
+    }
+
+    private func progressText(_ progress: BackupProgress) -> String {
+        let count = "\(progress.done + progress.failed.count) of \(progress.total)"
+        guard let current = progress.current else { return count }
+        return count + " · " + current
+    }
+
+    private var lastBackupText: String {
+        let date = devices.lastBackupDate.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "never"
+        return "Saving to \(devices.backupFolder.path) · last backup \(date)"
     }
 
     @ViewBuilder
@@ -111,5 +145,6 @@ struct DeviceView: View {
         let total = devices.items.reduce(Int64(0)) { $0 + $1.size }
         return "\(devices.items.count - videos) photos, \(videos) videos · "
             + ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+            + " · \(devices.newItems.count) not backed up yet"
     }
 }
