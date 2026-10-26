@@ -41,10 +41,13 @@ struct GalleryView: View {
     var body: some View {
         ZStack {
             content
-            if let index = viewerIndex, !visibleItems.isEmpty {
+            if viewerIndex != nil, !visibleItems.isEmpty {
                 let shown = visibleItems
+                // Read the live index, not the one captured when this body ran: the viewer's
+                // keyboard-shortcut closures can outlive a render, and a captured value made
+                // every arrow press step from the item that was clicked, not the current one.
                 ViewerView(items: shown, index: Binding(
-                    get: { min(index, shown.count - 1) },
+                    get: { min(viewerIndex ?? 0, shown.count - 1) },
                     set: { viewerIndex = $0 }
                 )) { viewerIndex = nil }
                 .transition(.opacity)
