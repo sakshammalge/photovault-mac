@@ -97,8 +97,37 @@ final class DeviceManager: NSObject, ObservableObject {
         store.contains(item.backupKey)
     }
 
+    /// Items whose own file, or a Live Photo / edit sidecar, isn't safely in the backup.
     var newItems: [MediaItem] {
-        items.filter { !store.contains($0.backupKey) }
+        items.filter { item in
+            if !store.contains(item.backupKey) { return true }
+            let sidecars = item.file.sidecarFiles?.compactMap { $0 as? ICCameraFile } ?? []
+            return sidecars.contains {
+                !store.contains(BackupStore.key(name: $0.name ?? "Untitled", size: $0.fileSize, created: item.created))
+            }
+        }
+    }
+
+    /// Rechecks the backup folder against the backup record, so anything deleted or
+    /// damaged there shows up as "not backed up" and is copied again by the next backup.
+    func verifyBackup() {
+        guard backup == nil else { return }
+        let result = store.verify()
+        objectWillChange.send()
+        if result.problemCount == 0 {
+            lastBackupResult = "Verified \(result.checked) files: all present and the right size."
+            return
+        }
+        var summary = "Checked \(result.checked) files: \(result.missing.count) missing, \(result.mismatched.count) wrong size."
+        let names = (result.missing + result.mismatched).prefix(5).map { ($0 as NSString).lastPathComponent }
+        summary += " (" + names.joined(separator: ", ") + (result.problemCount > 5 ? ", …" : "") + ")"
+        summary += isReadyToBackUp ? " Click Back Up to restore them." : " Connect your iPhone and back up to restore them."
+        lastBackupResult = summary
+    }
+
+    private var isReadyToBackUp: Bool {
+        if case .ready = state { return true }
+        return false
     }
 
     var lastBackupDate: Date? { store.index.lastBackup }

@@ -14,6 +14,13 @@ struct BackupIndex: Codable {
     var lastBackup: Date?
 }
 
+struct VerifyResult {
+    let checked: Int
+    var missing: [String] = []
+    var mismatched: [String] = []
+    var problemCount: Int { missing.count + mismatched.count }
+}
+
 /// Tracks which phone files are already in the backup folder and where new ones go.
 final class BackupStore {
     let root: URL
@@ -90,6 +97,29 @@ final class BackupStore {
     func record(key: String, at url: URL, size: Int64) {
         let rel = url.path.replacingOccurrences(of: root.path + "/", with: "")
         index.records[key] = BackupRecord(path: rel, size: size, backedUpAt: Date())
+    }
+
+    /// Checks every record against the backup folder. Records whose file is gone or has
+    /// a different size are dropped so the next backup copies them again. Files on
+    /// disk are never touched.
+    func verify() -> VerifyResult {
+        var result = VerifyResult(checked: index.records.count)
+        for (key, record) in index.records {
+            let url = root.appendingPathComponent(record.path)
+            guard let size = fileSize(at: url) else {
+                result.missing.append(record.path)
+                index.records[key] = nil
+                continue
+            }
+            if size != record.size {
+                result.mismatched.append(record.path)
+                index.records[key] = nil
+            }
+        }
+        result.missing.sort()
+        result.mismatched.sort()
+        if result.problemCount > 0 { save() }
+        return result
     }
 
     func finish() {
