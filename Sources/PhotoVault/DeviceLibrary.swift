@@ -27,7 +27,13 @@ final class DeviceLibrary: ObservableObject {
     private static let selectedKey = "selectedDeviceID"
     private let picturesFolder: URL
 
-    init(picturesFolder: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Pictures", isDirectory: true)) {
+    /// The current user's Pictures folder, as the system reports it.
+    static var systemPicturesFolder: URL {
+        FileManager.default.urls(for: .picturesDirectory, in: .userDomainMask).first
+            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Pictures", isDirectory: true)
+    }
+
+    init(picturesFolder: URL = DeviceLibrary.systemPicturesFolder) {
         self.picturesFolder = picturesFolder
         if let data = UserDefaults.standard.data(forKey: Self.devicesKey),
            let saved = try? JSONDecoder().decode([KnownDevice].self, from: data) {
