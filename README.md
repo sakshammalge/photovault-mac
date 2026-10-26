@@ -47,3 +47,7 @@ The **Gallery** tab shows everything in the backup folder, newest first, grouped
 - Click a photo or video to open it full window. Left/right arrows move between items, Esc closes. HEIC opens like any other photo.
 - A video saved next to a photo with the same name is treated as that photo's Live Photo clip: it is hidden from the grid and plays from the LIVE button in the viewer.
 - The gallery only reads your original files; the only thing it writes is the thumbnail cache.
+
+## App icon
+
+Source art is `Support/AppIcon/AppIcon.svg`. `node Support/AppIcon/build.js` (needs `playwright`) regenerates `AppIcon.appiconset` (Xcode asset catalog) and `AppIcon.icns`.
