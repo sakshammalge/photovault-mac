@@ -35,13 +35,28 @@ final class GalleryModel: ObservableObject {
     @Published private(set) var locations: [String: Coordinate] = [:]
     @Published private(set) var isReadingLocations = false
 
-    let root: URL
-    let thumbnails: ThumbnailCache
+    private(set) var root: URL
+    private(set) var thumbnails: ThumbnailCache
 
     init(root: URL) {
         self.root = root
         thumbnails = ThumbnailCache(root: root)
         favoriteIDs = Self.readFavorites(root)
+    }
+
+    /// Points the gallery at another device's backup folder and rescans it.
+    func switchRoot(to newRoot: URL) {
+        guard newRoot != root else { return }
+        objectWillChange.send()
+        root = newRoot
+        thumbnails = ThumbnailCache(root: newRoot)
+        favoriteIDs = Self.readFavorites(newRoot)
+        days = []
+        items = []
+        locations = [:]
+        hasLoaded = false
+        isLoading = false
+        reload()
     }
 
     static func group(_ items: [GalleryItem]) -> [GalleryDay] {
@@ -115,7 +130,7 @@ final class GalleryModel: ObservableObject {
                 }
                 return found
             }.value
-            locations = result
+            if url == locationsURL { locations = result }
             isReadingLocations = false
         }
     }
@@ -138,6 +153,7 @@ final class GalleryModel: ObservableObject {
         let root = root
         Task {
             let scanned = await Task.detached(priority: .userInitiated) { Self.scan(root) }.value
+            guard root == self.root else { return }   // switched device while scanning
             days = Self.group(scanned)
             items = days.flatMap(\.items)
             isLoading = false

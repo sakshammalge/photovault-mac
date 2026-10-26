@@ -4,18 +4,24 @@ import SwiftUI
 @main
 struct PhotoVaultApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @StateObject private var library: DeviceLibrary
     @StateObject private var devices: DeviceManager
     @StateObject private var gallery: GalleryModel
 
     init() {
-        let manager = DeviceManager()
-        _devices = StateObject(wrappedValue: manager)
-        _gallery = StateObject(wrappedValue: GalleryModel(root: manager.backupFolder))
+        let library = DeviceLibrary()
+        _library = StateObject(wrappedValue: library)
+        _devices = StateObject(wrappedValue: DeviceManager(library: library))
+        // Until a device is chosen the gallery points at a folder that doesn't exist yet.
+        let start = library.selected?.folder
+            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Pictures/iPhone", isDirectory: true)
+        _gallery = StateObject(wrappedValue: GalleryModel(root: start))
     }
 
     var body: some Scene {
         WindowGroup("PhotoVault") {
             RootView()
+                .environmentObject(library)
                 .environmentObject(devices)
                 .environmentObject(gallery)
                 .frame(minWidth: 760, minHeight: 480)

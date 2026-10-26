@@ -8,7 +8,7 @@ Step 4 of 4: auto-backup.
 
 - [x] Detect an iPhone plugged in over USB (ImageCaptureCore)
 - [x] List every photo and video with name, date, size and type
-- [x] Incremental backup into `~/Pictures/IphoneBackup`
+- [x] Incremental backup into `~/Pictures/{device name}`, one folder per iPhone
 - [x] Gallery for the backup folder (grouped by day, cached thumbnails, full-screen viewer, video, Live Photos)
 - [x] Auto-backup on connect, with a notification when it finishes
 - [ ] Packaging as a .app
@@ -30,10 +30,15 @@ The app asks the phone for original files (`mediaPresentation = .originalAssets`
 ## How the backup works
 
 - Press **Back Up N New Items**. Only items not already in the backup are copied, oldest first.
-- Files go into `~/Pictures/IphoneBackup/YEAR/MONTH/`, keeping the phone's file names and capture dates. Live Photo videos and edit files (`.AAE`) are copied next to their photo.
+- Each iPhone has its own folder, `~/Pictures/{device name}/YEAR/MONTH/`, found again by its serial number so a renamed phone keeps its folder. The device menu at the top of the sidebar picks whose backup the gallery, favorites, map and duplicates views show.
+- Files go into that folder, keeping the phone's file names and capture dates. Live Photo videos and edit files (`.AAE`) are copied next to their photo.
 - Each file is downloaded into `.photovault/incoming/` first and only moved into place once its size matches the phone's. Nothing is ever overwritten; a name clash gets a ` (2)` suffix.
 - What has been backed up is recorded in `.photovault/index.json`, so a stopped or failed backup picks up where it left off. Files you already copied into the folder with the same name and size are recognised and not downloaded again.
 - Nothing on the phone is changed or deleted.
+
+## Existing IphoneBackup folder
+
+If `~/Pictures/IphoneBackup` exists from an earlier version, it appears in the device menu as is. The first time a phone connects, PhotoVault asks whether to use that folder for the phone (no files are moved) or to start a new `~/Pictures/{device name}` folder.
 
 ## Auto-backup
 
