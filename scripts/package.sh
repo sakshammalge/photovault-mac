@@ -9,17 +9,25 @@ VERSION=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' Support/
 DIST=dist
 APP="$DIST/$NAME.app"
 
-ARCHS=(--arch arm64 --arch x86_64)
-[[ "${1:-}" == "--arm64-only" ]] && ARCHS=(--arch arm64)
+ARCHS=(arm64 x86_64)
+[[ "${1:-}" == "--arm64-only" ]] && ARCHS=(arm64)
 
-echo "==> Building $NAME $VERSION (release)"
-swift build -c release "${ARCHS[@]}"
-BIN=$(swift build -c release "${ARCHS[@]}" --show-bin-path)/$NAME
+# Build each architecture separately and merge with lipo; this works with just the
+# Command Line Tools (a multi-arch `swift build --arch` needs full Xcode).
+echo "==> Building $NAME $VERSION (release: ${ARCHS[*]})"
+BINS=()
+for arch in "${ARCHS[@]}"; do
+  swift build -c release --triple "$arch-apple-macosx13.0"
+  BINS+=("$(swift build -c release --triple "$arch-apple-macosx13.0" --show-bin-path)/$NAME")
+done
+mkdir -p "$DIST"
+BIN="$DIST/$NAME.bin"
+lipo -create "${BINS[@]}" -output "$BIN"
 
 echo "==> Assembling $APP"
-rm -rf "$DIST"
+rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$BIN" "$APP/Contents/MacOS/$NAME"
+mv "$BIN" "$APP/Contents/MacOS/$NAME"
 cp Support/Info.plist "$APP/Contents/Info.plist"
 cp Support/AppIcon/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
