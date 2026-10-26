@@ -32,6 +32,10 @@ final class DeviceManager: NSObject, ObservableObject {
     @Published private(set) var items: [MediaItem] = []
     @Published var lastDownloadResult: String?
 
+    /// Where backups are saved. Used by the test download now and the full backup later.
+    let backupFolder = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Pictures/IphoneBackup", isDirectory: true)
+
     private let browser = ICDeviceBrowser()
     private var camera: ICCameraDevice?
 
@@ -51,11 +55,10 @@ final class DeviceManager: NSObject, ObservableObject {
         rebuildItems(from: camera)
     }
 
-    /// Copies one file to ~/Downloads/PhotoVault-test and checks the byte count
+    /// Copies one file to the backup folder and checks the byte count
     /// matches what the phone reported, to confirm we get untouched originals.
     func testDownload(_ item: MediaItem) {
-        let dir = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Downloads/PhotoVault-test", isDirectory: true)
+        let dir = backupFolder
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         lastDownloadResult = "Downloading \(item.name)…"
 
