@@ -32,6 +32,10 @@ final class DeviceManager: NSObject, ObservableObject {
     @Published private(set) var items: [MediaItem] = []
     @Published var lastDownloadResult: String?
 
+    /// Where backups are saved. Used by the test download now and the full backup later.
+    let backupFolder = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Pictures/IphoneBackup", isDirectory: true)
+
     private let browser = ICDeviceBrowser()
     private var camera: ICCameraDevice?
 
@@ -41,14 +45,8 @@ final class DeviceManager: NSObject, ObservableObject {
         browser.browsedDeviceTypeMask = ICDeviceTypeMask(
             rawValue: ICDeviceTypeMask.camera.rawValue | ICDeviceLocationTypeMask.local.rawValue
         )!
-        browser.requestContentsAuthorization { status in
-            DispatchQueue.main.async {
-                if status != .authorized {
-                    self.state = .failed("PhotoVault isn't allowed to read connected devices. Allow it in System Settings → Privacy & Security.")
-                }
-            }
-        }
-        browser.requestControlAuthorization { _ in }
+        // On macOS there is no authorization API to call: the system prompts
+        // using the usage strings in Info.plist.
         browser.start()
     }
 
@@ -57,11 +55,10 @@ final class DeviceManager: NSObject, ObservableObject {
         rebuildItems(from: camera)
     }
 
-    /// Copies one file to ~/Downloads/PhotoVault-test and checks the byte count
+    /// Copies one file to the backup folder and checks the byte count
     /// matches what the phone reported, to confirm we get untouched originals.
     func testDownload(_ item: MediaItem) {
-        let dir = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Downloads/PhotoVault-test", isDirectory: true)
+        let dir = backupFolder
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         lastDownloadResult = "Downloading \(item.name)…"
 
@@ -86,7 +83,7 @@ final class DeviceManager: NSObject, ObservableObject {
         let files = camera.mediaFiles?.compactMap { $0 as? ICCameraFile } ?? []
         items = files.map { file in
             MediaItem(
-                id: file.persistentIDString ?? "\(file.name ?? "")-\(file.fileSize)",
+                id: "\(file.ptpObjectHandle)-\(file.name ?? "")-\(file.fileSize)",
                 name: file.name ?? "Untitled",
                 size: file.fileSize,
                 created: file.fileCreationDate ?? file.creationDate,
