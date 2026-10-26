@@ -78,6 +78,8 @@ struct DeviceView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(count == 0)
+                Button("Verify Backup") { devices.verifyBackup() }
+                    .help("Check that every backed-up file is still in the backup folder")
                 VStack(alignment: .leading, spacing: 2) {
                     if let result = devices.lastBackupResult {
                         Text(result).font(.callout)
