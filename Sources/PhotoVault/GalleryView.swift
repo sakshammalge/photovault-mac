@@ -17,6 +17,8 @@ struct GalleryView: View {
                 .transition(.opacity)
             }
         }
+        .navigationTitle("Photos")
+        .navigationSubtitle(gallery.items.isEmpty ? "" : "\(gallery.items.count) items")
         .animation(.easeInOut(duration: 0.15), value: viewerIndex == nil)
         .toolbar {
             ToolbarItemGroup {
@@ -36,16 +38,22 @@ struct GalleryView: View {
     @ViewBuilder
     private var content: some View {
         if gallery.items.isEmpty {
-            VStack(spacing: 8) {
+            VStack(spacing: 10) {
                 if gallery.isLoading || !gallery.hasLoaded {
-                    ProgressView()
+                    ProgressView().controlSize(.large)
                 } else {
-                    Image(systemName: "photo.on.rectangle").font(.largeTitle).foregroundStyle(.secondary)
-                    Text("No photos in \(gallery.root.path) yet.")
-                    Text("Connect your iPhone and back it up, or copy photos into that folder.")
+                    Image(systemName: "photo.on.rectangle.angled")
+                        .font(.system(size: 48, weight: .light))
                         .foregroundStyle(.secondary)
+                    Text("No Photos Yet").font(.title2.weight(.semibold))
+                    Text("Connect your iPhone and back it up, or copy photos into\n\((gallery.root.path as NSString).abbreviatingWithTildeInPath).")
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                    Button("Show Backup Folder") { NSWorkspace.shared.open(gallery.root) }
+                        .padding(.top, 4)
                 }
             }
+            .padding(40)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             ScrollView {
@@ -62,12 +70,12 @@ struct GalleryView: View {
                         } header: {
                             HStack {
                                 Text(day.id.formatted(date: .complete, time: .omitted)).font(.headline)
-                                Text("\(day.items.count)").foregroundStyle(.secondary)
+                                Text("\(day.items.count)").font(.subheadline).foregroundStyle(.secondary)
                                 Spacer()
                             }
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
-                            .background(.regularMaterial)
+                            .background(.bar)
                         }
                     }
                 }
