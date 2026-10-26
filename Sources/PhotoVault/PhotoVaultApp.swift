@@ -14,7 +14,7 @@ struct PhotoVaultApp: App {
         _devices = StateObject(wrappedValue: DeviceManager(library: library))
         // Until a device is chosen the gallery points at a folder that doesn't exist yet.
         let start = library.selected?.folder
-            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Pictures/iPhone", isDirectory: true)
+            ?? DeviceLibrary.systemPicturesFolder.appendingPathComponent("iPhone", isDirectory: true)
         _gallery = StateObject(wrappedValue: GalleryModel(root: start))
     }
 
