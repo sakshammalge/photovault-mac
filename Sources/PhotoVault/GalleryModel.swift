@@ -55,9 +55,9 @@ final class GalleryModel: ObservableObject {
         }
     }
 
-    private static let photoExtensions: Set<String> =
+    nonisolated private static let photoExtensions: Set<String> =
         ["heic", "heif", "jpg", "jpeg", "png", "gif", "tif", "tiff", "dng", "webp", "bmp"]
-    private static let videoExtensions: Set<String> = ["mov", "mp4", "m4v"]
+    nonisolated private static let videoExtensions: Set<String> = ["mov", "mp4", "m4v"]
 
     nonisolated private static func scan(_ root: URL) -> [GalleryItem] {
         let keys: [URLResourceKey] = [.isRegularFileKey, .creationDateKey, .contentModificationDateKey, .fileSizeKey]
