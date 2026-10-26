@@ -4,13 +4,14 @@ A native macOS app that backs up the photos and videos from your iPhone's camera
 
 ## Status
 
-Step 3 of 4: gallery.
+Step 4 of 4: auto-backup.
 
 - [x] Detect an iPhone plugged in over USB (ImageCaptureCore)
 - [x] List every photo and video with name, date, size and type
 - [x] Incremental backup into `~/Pictures/IphoneBackup`
 - [x] Gallery for the backup folder (grouped by day, cached thumbnails, full-screen viewer, video, Live Photos)
-- [ ] Auto-backup on connect, packaging as a .app
+- [x] Auto-backup on connect, with a notification when it finishes
+- [ ] Packaging as a .app
 
 ## Run it
 
@@ -33,6 +34,10 @@ The app asks the phone for original files (`mediaPresentation = .originalAssets`
 - Each file is downloaded into `.photovault/incoming/` first and only moved into place once its size matches the phone's. Nothing is ever overwritten; a name clash gets a ` (2)` suffix.
 - What has been backed up is recorded in `.photovault/index.json`, so a stopped or failed backup picks up where it left off. Files you already copied into the folder with the same name and size are recognised and not downloaded again.
 - Nothing on the phone is changed or deleted.
+
+## Auto-backup
+
+When the iPhone is connected, unlocked and trusted, and its camera roll has been read, PhotoVault starts the incremental backup by itself, once per connection, and posts a notification when it finishes (item count, or how many failed). Turn it off with the checkbox on the device screen; the choice is remembered. Under `swift run` the notification is sent via `osascript` and may appear as "Script Editor"; from a packaged .app it uses the normal notification centre.
 
 ## Gallery
 

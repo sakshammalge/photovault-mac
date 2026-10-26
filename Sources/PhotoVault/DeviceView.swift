@@ -117,6 +117,9 @@ struct DeviceView: View {
             .controlSize(.large)
             .disabled(count == 0)
         }
+        Toggle("Back up automatically when this iPhone connects", isOn: $devices.autoBackupEnabled)
+            .toggleStyle(.checkbox)
+            .font(.callout)
         if let result = devices.lastBackupResult {
             Text(result).font(.callout).foregroundStyle(.secondary)
         }

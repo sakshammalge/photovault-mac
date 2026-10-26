@@ -41,12 +41,20 @@ final class DeviceManager: NSObject, ObservableObject {
     @Published private(set) var items: [MediaItem] = []
     @Published private(set) var backup: BackupProgress?
     @Published private(set) var lastBackupResult: String?
+    /// Start a backup by itself once the phone is connected and its camera roll is read.
+    @Published var autoBackupEnabled: Bool = UserDefaults.standard.object(forKey: "autoBackupEnabled") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(autoBackupEnabled, forKey: "autoBackupEnabled") }
+    }
 
     /// Where backups are saved.
     let backupFolder = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Pictures/IphoneBackup", isDirectory: true)
     private lazy var store = BackupStore(root: backupFolder)
     private var cancelRequested = false
+    /// The running backup was started automatically, so its outcome is announced with a notification.
+    private var backupIsAutomatic = false
+    /// Auto-backup runs once per connection; reset when the phone is unplugged.
+    private var autoBackupAttempted = false
 
     private let browser = ICDeviceBrowser()
     private var camera: ICCameraDevice?
@@ -70,7 +78,7 @@ final class DeviceManager: NSObject, ObservableObject {
     /// Copies every item not yet in the backup folder, oldest first. Each file is
     /// downloaded to a staging folder, its size checked against the phone, then moved
     /// into YEAR/MONTH. Nothing on the phone is changed or deleted.
-    func startBackup() {
+    func startBackup(automatic: Bool = false) {
         guard backup == nil else { return }
         let queue = newItems.sorted { ($0.created ?? .distantPast) < ($1.created ?? .distantPast) }
         guard !queue.isEmpty else {
@@ -81,8 +89,10 @@ final class DeviceManager: NSObject, ObservableObject {
             try store.prepare()
         } catch {
             lastBackupResult = "Can't write to \(backupFolder.path): \(error.localizedDescription)"
+            if automatic { Notifier.post(title: "PhotoVault backup failed", body: lastBackupResult ?? "") }
             return
         }
+        backupIsAutomatic = automatic
         cancelRequested = false
         lastBackupResult = nil
         backup = BackupProgress(total: queue.count)
@@ -201,6 +211,21 @@ final class DeviceManager: NSObject, ObservableObject {
         }
         lastBackupResult = summary + "."
         backup = nil
+        if backupIsAutomatic { notifyAutomaticBackupFinished(progress, cancelled: cancelled) }
+        backupIsAutomatic = false
+    }
+
+    private func notifyAutomaticBackupFinished(_ progress: BackupProgress, cancelled: Bool) {
+        let items = "\(progress.done) item\(progress.done == 1 ? "" : "s")"
+        if !progress.failed.isEmpty {
+            Notifier.post(title: "PhotoVault backup finished with errors",
+                          body: "Backed up \(items); \(progress.failed.count) failed and will be retried next time.")
+        } else if cancelled {
+            Notifier.post(title: "PhotoVault backup stopped",
+                          body: "Backed up \(progress.done) of \(progress.total) items before it stopped.")
+        } else {
+            Notifier.post(title: "PhotoVault backup complete", body: "Backed up \(items) from your iPhone.")
+        }
     }
 
     private func rebuildItems(from camera: ICCameraDevice) {
@@ -237,6 +262,7 @@ extension DeviceManager: ICDeviceBrowserDelegate {
 
     private func disconnect() {
         camera = nil
+        autoBackupAttempted = false
         items = []
         state = .searching
     }
@@ -273,6 +299,10 @@ extension DeviceManager: ICCameraDeviceDelegate {
     func deviceDidBecomeReady(withCompleteContentCatalog device: ICCameraDevice) {
         rebuildItems(from: device)
         state = .ready(device.name ?? "iPhone")
+        if autoBackupEnabled, !autoBackupAttempted {
+            autoBackupAttempted = true
+            startBackup(automatic: true)
+        }
     }
 
     func cameraDevice(_ camera: ICCameraDevice, didAdd items: [ICCameraItem]) {
