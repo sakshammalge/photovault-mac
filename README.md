@@ -4,12 +4,12 @@ A native macOS app that backs up the photos and videos from your iPhone's camera
 
 ## Status
 
-Step 2 of 4: incremental backup.
+Step 3 of 4: gallery.
 
 - [x] Detect an iPhone plugged in over USB (ImageCaptureCore)
 - [x] List every photo and video with name, date, size and type
 - [x] Incremental backup into `~/Pictures/IphoneBackup`
-- [ ] Gallery UI for the backup folder
+- [x] Gallery for the backup folder (grouped by day, cached thumbnails, full-screen viewer, video, Live Photos)
 - [ ] Auto-backup on connect, packaging as a .app
 
 ## Run it
@@ -33,3 +33,12 @@ The app asks the phone for original files (`mediaPresentation = .originalAssets`
 - Each file is downloaded into `.photovault/incoming/` first and only moved into place once its size matches the phone's. Nothing is ever overwritten; a name clash gets a ` (2)` suffix.
 - What has been backed up is recorded in `.photovault/index.json`, so a stopped or failed backup picks up where it left off. Files you already copied into the folder with the same name and size are recognised and not downloaded again.
 - Nothing on the phone is changed or deleted.
+
+## Gallery
+
+The **Gallery** tab shows everything in the backup folder, newest first, grouped by day. It reads the folder directly, so it works without the phone connected.
+
+- Thumbnails are cached in memory and in `.photovault/thumbs/`; the slider in the toolbar changes their size.
+- Click a photo or video to open it full window. Left/right arrows move between items, Esc closes. HEIC opens like any other photo.
+- A video saved next to a photo with the same name is treated as that photo's Live Photo clip: it is hidden from the grid and plays from the LIVE button in the viewer.
+- The gallery only reads your original files; the only thing it writes is the thumbnail cache.

@@ -4,12 +4,20 @@ import SwiftUI
 @main
 struct PhotoVaultApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @StateObject private var devices = DeviceManager()
+    @StateObject private var devices: DeviceManager
+    @StateObject private var gallery: GalleryModel
+
+    init() {
+        let manager = DeviceManager()
+        _devices = StateObject(wrappedValue: manager)
+        _gallery = StateObject(wrappedValue: GalleryModel(root: manager.backupFolder))
+    }
 
     var body: some Scene {
         WindowGroup("PhotoVault") {
-            DeviceView()
+            RootView()
                 .environmentObject(devices)
+                .environmentObject(gallery)
                 .frame(minWidth: 760, minHeight: 480)
                 .onAppear { devices.start() }
         }
