@@ -4,6 +4,8 @@ A native macOS app that backs up the photos and videos from your iPhone's camera
 
 > **Install:** download `PhotoVault-1.0.0.dmg` from [Releases](https://github.com/sakshammalge/photovault-mac/releases), drag PhotoVault to Applications, then right-click it and choose **Open** the first time (see [Gatekeeper](#gatekeeper)).
 
+![PhotoVault gallery](docs/screenshots/gallery.jpg)
+
 ## Features
 
 - [x] Detect an iPhone plugged in over USB (ImageCaptureCore)
@@ -83,3 +85,11 @@ Source art is `Support/AppIcon/AppIcon.svg`. `node Support/AppIcon/build.js` (ne
 ## License
 
 [MIT](LICENSE)
+
+## Screenshots
+
+The screenshot above was taken in demo mode, which shows a folder of stock photos and never touches a phone or your saved settings:
+
+```sh
+PHOTOVAULT_DEMO_FOLDER="$HOME/some/folder" PHOTOVAULT_DEMO_SECTION=gallery .build/release/PhotoVault
+```
