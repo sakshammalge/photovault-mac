@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.1 - 2026-10-26
+
+- Fix the full-window viewer's arrow keys stepping from the item you clicked instead of the one currently shown (#17).
+- README screenshot and a demo mode (`PHOTOVAULT_DEMO_FOLDER`) for taking screenshots without a phone or personal photos.
+
 ## 1.0.0 - 2026-10-26
 
 First release.

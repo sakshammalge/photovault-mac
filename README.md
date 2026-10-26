@@ -2,7 +2,7 @@
 
 A native macOS app that backs up the photos and videos from your iPhone's camera roll to a folder on your Mac, as untouched originals, and lets you browse the backup in a Photos-style gallery.
 
-> **Install:** download `PhotoVault-1.0.0.dmg` from [Releases](https://github.com/sakshammalge/photovault-mac/releases), drag PhotoVault to Applications, then right-click it and choose **Open** the first time (see [Gatekeeper](#gatekeeper)).
+> **Install:** download the `.dmg` from [Releases](https://github.com/sakshammalge/photovault-mac/releases), drag PhotoVault to Applications, then right-click it and choose **Open** the first time (see [Gatekeeper](#gatekeeper)).
 
 ![PhotoVault gallery](docs/screenshots/gallery.jpg)
 
