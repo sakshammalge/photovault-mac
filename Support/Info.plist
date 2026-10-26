@@ -4,12 +4,26 @@
 <dict>
     <key>CFBundleIdentifier</key>
     <string>com.sakshammalge.photovault</string>
+    <key>CFBundleExecutable</key>
+    <string>PhotoVault</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>NSPrincipalClass</key>
+    <string>NSApplication</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.photography</string>
+    <key>NSHumanReadableCopyright</key>
+    <string>Copyright © 2026 Saksham Malge. MIT License.</string>
     <key>CFBundleName</key>
     <string>PhotoVault</string>
     <key>CFBundleDisplayName</key>
     <string>PhotoVault</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.1.0</string>
+    <string>1.0.0</string>
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>LSMinimumSystemVersion</key>

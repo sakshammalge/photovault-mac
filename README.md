@@ -2,18 +2,41 @@
 
 A native macOS app that backs up the photos and videos from your iPhone's camera roll to a folder on your Mac, as untouched originals, and lets you browse the backup in a Photos-style gallery.
 
-## Status
+> **Install:** download `PhotoVault-1.0.0.dmg` from [Releases](https://github.com/sakshammalge/photovault-mac/releases), drag PhotoVault to Applications, then right-click it and choose **Open** the first time (see [Gatekeeper](#gatekeeper)).
 
-Step 4 of 4: auto-backup.
+## Features
 
 - [x] Detect an iPhone plugged in over USB (ImageCaptureCore)
 - [x] List every photo and video with name, date, size and type
 - [x] Incremental backup into `~/Pictures/{device name}`, one folder per iPhone
 - [x] Gallery for the backup folder (grouped by day, cached thumbnails, full-screen viewer, video, Live Photos)
 - [x] Auto-backup on connect, with a notification when it finishes
-- [ ] Packaging as a .app
+- [x] Packaged as a signed-ad-hoc `.app` / `.dmg`
+- [x] Favorites, search, map and duplicate finder
 
-## Run it
+## Gatekeeper
+
+Release builds are **ad-hoc signed, not notarized** (no Apple Developer ID). On first launch macOS will say the app can't be verified. Right-click the app, choose **Open**, then **Open** again; or run `xattr -dr com.apple.quarantine /Applications/PhotoVault.app`. Building from source avoids the prompt entirely.
+
+## Build and package
+
+Requires macOS 13+ and Xcode or the command line tools.
+
+```sh
+scripts/package.sh              # universal (arm64 + x86_64)
+scripts/package.sh --arm64-only
+```
+
+This produces `dist/PhotoVault.app`, `PhotoVault-<version>.dmg`, `.zip` and `SHA256SUMS.txt`. The version comes from `Support/Info.plist`.
+
+## Privacy and safety
+
+- Everything stays on your Mac. PhotoVault makes no network requests and has no analytics.
+- It only reads from the iPhone; nothing on the phone is changed or deleted.
+- It never overwrites or deletes files in your backup folder.
+- The app asks for access to connected devices (camera/USB prompt) and, optionally, permission to send notifications.
+
+## Run from source
 
 Requires macOS 13+ and Xcode (or the Xcode command line tools).
 
@@ -42,7 +65,7 @@ If `~/Pictures/IphoneBackup` exists from an earlier version, it appears in the d
 
 ## Auto-backup
 
-When the iPhone is connected, unlocked and trusted, and its camera roll has been read, PhotoVault starts the incremental backup by itself, once per connection, and posts a notification when it finishes (item count, or how many failed). Turn it off with the checkbox on the device screen; the choice is remembered. Under `swift run` the notification is sent via `osascript` and may appear as "Script Editor"; from a packaged .app it uses the normal notification centre.
+When the iPhone is connected, unlocked and trusted, and its camera roll has been read, PhotoVault starts the incremental backup by itself, once per connection, and posts a notification when it finishes (item count, or how many failed). Turn it off with the checkbox on the device screen; the choice is remembered. Under `swift run` the notification is sent via `osascript` and may appear as "Script Editor"; from the packaged .app it uses the normal notification centre.
 
 ## Gallery
 
@@ -56,3 +79,7 @@ The **Gallery** tab shows everything in the backup folder, newest first, grouped
 ## App icon
 
 Source art is `Support/AppIcon/AppIcon.svg`. `node Support/AppIcon/build.js` (needs `playwright`) regenerates `AppIcon.appiconset` (Xcode asset catalog) and `AppIcon.icns`.
+
+## License
+
+[MIT](LICENSE)
