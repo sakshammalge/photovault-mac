@@ -41,14 +41,8 @@ final class DeviceManager: NSObject, ObservableObject {
         browser.browsedDeviceTypeMask = ICDeviceTypeMask(
             rawValue: ICDeviceTypeMask.camera.rawValue | ICDeviceLocationTypeMask.local.rawValue
         )!
-        browser.requestContentsAuthorization { status in
-            DispatchQueue.main.async {
-                if status != .authorized {
-                    self.state = .failed("PhotoVault isn't allowed to read connected devices. Allow it in System Settings → Privacy & Security.")
-                }
-            }
-        }
-        browser.requestControlAuthorization { _ in }
+        // On macOS there is no authorization API to call: the system prompts
+        // using the usage strings in Info.plist.
         browser.start()
     }
 
@@ -86,7 +80,7 @@ final class DeviceManager: NSObject, ObservableObject {
         let files = camera.mediaFiles?.compactMap { $0 as? ICCameraFile } ?? []
         items = files.map { file in
             MediaItem(
-                id: file.persistentIDString ?? "\(file.name ?? "")-\(file.fileSize)",
+                id: "\(file.ptpObjectHandle)-\(file.name ?? "")-\(file.fileSize)",
                 name: file.name ?? "Untitled",
                 size: file.fileSize,
                 created: file.fileCreationDate ?? file.creationDate,
