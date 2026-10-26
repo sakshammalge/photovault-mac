@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 
 /// One photo or video in the backup folder.
 struct GalleryItem: Identifiable, Hashable {
@@ -28,6 +29,11 @@ final class GalleryModel: ObservableObject {
     @Published private(set) var items: [GalleryItem] = []
     @Published private(set) var isLoading = false
     @Published private(set) var hasLoaded = false
+    /// Ids of favorite items, kept in `.photovault/favorites.json`. Originals are never touched.
+    @Published private(set) var favoriteIDs: Set<String> = []
+    /// GPS positions by item id (only items that have one), read lazily by `loadLocations()`.
+    @Published private(set) var locations: [String: Coordinate] = [:]
+    @Published private(set) var isReadingLocations = false
 
     let root: URL
     let thumbnails: ThumbnailCache
@@ -35,6 +41,95 @@ final class GalleryModel: ObservableObject {
     init(root: URL) {
         self.root = root
         thumbnails = ThumbnailCache(root: root)
+        favoriteIDs = Self.readFavorites(root)
+    }
+
+    static func group(_ items: [GalleryItem]) -> [GalleryDay] {
+        let calendar = Calendar.current
+        let grouped = Dictionary(grouping: items) { calendar.startOfDay(for: $0.date) }
+        return grouped.keys.sorted(by: >).map { day in
+            GalleryDay(id: day, items: grouped[day]!.sorted { $0.date > $1.date })
+        }
+    }
+
+    // MARK: Favorites
+
+    private var metaDir: URL { root.appendingPathComponent(".photovault", isDirectory: true) }
+    private var favoritesURL: URL { metaDir.appendingPathComponent("favorites.json") }
+    private var locationsURL: URL { metaDir.appendingPathComponent("locations.json") }
+
+    func isFavorite(_ item: GalleryItem) -> Bool { favoriteIDs.contains(item.id) }
+
+    func toggleFavorite(_ item: GalleryItem) {
+        if !favoriteIDs.insert(item.id).inserted { favoriteIDs.remove(item.id) }
+        let ids = favoriteIDs.sorted()
+        let url = favoritesURL, dir = metaDir
+        DispatchQueue.global(qos: .utility).async {
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            if let data = try? JSONEncoder().encode(ids) { try? data.write(to: url, options: .atomic) }
+        }
+    }
+
+    nonisolated private static func readFavorites(_ root: URL) -> Set<String> {
+        let url = root.appendingPathComponent(".photovault/favorites.json")
+        guard let data = try? Data(contentsOf: url),
+              let ids = try? JSONDecoder().decode([String].self, from: data) else { return [] }
+        return Set(ids)
+    }
+
+    // MARK: Locations
+
+    struct Coordinate: Hashable { let latitude: Double; let longitude: Double }
+
+    private struct CachedLocation: Codable {
+        let size: Int64
+        let latitude: Double?
+        let longitude: Double?
+    }
+
+    /// Reads GPS tags from the photos' metadata. Results (including "no GPS") are cached
+    /// in `.photovault/locations.json` so later runs only look at new files.
+    func loadLocations() {
+        guard !isReadingLocations else { return }
+        isReadingLocations = true
+        let items = items.filter { !$0.isVideo }
+        let url = locationsURL, dir = metaDir
+        Task {
+            let result = await Task.detached(priority: .utility) { () -> [String: Coordinate] in
+                var cache = (try? JSONDecoder().decode([String: CachedLocation].self, from: Data(contentsOf: url))) ?? [:]
+                var changed = false
+                var found: [String: Coordinate] = [:]
+                for item in items {
+                    if let hit = cache[item.id], hit.size == item.size {
+                        if let lat = hit.latitude, let lon = hit.longitude { found[item.id] = Coordinate(latitude: lat, longitude: lon) }
+                        continue
+                    }
+                    let point = Self.gps(of: item.url)
+                    cache[item.id] = CachedLocation(size: item.size, latitude: point?.latitude, longitude: point?.longitude)
+                    changed = true
+                    if let point { found[item.id] = point }
+                }
+                if changed {
+                    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                    if let data = try? JSONEncoder().encode(cache) { try? data.write(to: url, options: .atomic) }
+                }
+                return found
+            }.value
+            locations = result
+            isReadingLocations = false
+        }
+    }
+
+    nonisolated private static func gps(of url: URL) -> Coordinate? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let gps = props[kCGImagePropertyGPSDictionary] as? [CFString: Any],
+              var lat = gps[kCGImagePropertyGPSLatitude] as? Double,
+              var lon = gps[kCGImagePropertyGPSLongitude] as? Double else { return nil }
+        if (gps[kCGImagePropertyGPSLatitudeRef] as? String) == "S" { lat = -lat }
+        if (gps[kCGImagePropertyGPSLongitudeRef] as? String) == "W" { lon = -lon }
+        guard abs(lat) <= 90, abs(lon) <= 180, !(lat == 0 && lon == 0) else { return nil }
+        return Coordinate(latitude: lat, longitude: lon)
     }
 
     func reload() {
@@ -43,12 +138,7 @@ final class GalleryModel: ObservableObject {
         let root = root
         Task {
             let scanned = await Task.detached(priority: .userInitiated) { Self.scan(root) }.value
-            var calendar = Calendar.current
-            calendar.timeZone = .current
-            let grouped = Dictionary(grouping: scanned) { calendar.startOfDay(for: $0.date) }
-            days = grouped.keys.sorted(by: >).map { day in
-                GalleryDay(id: day, items: grouped[day]!.sorted { $0.date > $1.date })
-            }
+            days = Self.group(scanned)
             items = days.flatMap(\.items)
             isLoading = false
             hasLoaded = true

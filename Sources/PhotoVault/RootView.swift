@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct RootView: View {
-    enum Section: Hashable { case gallery, device }
+    enum Section: Hashable { case gallery, favorites, map, duplicates, device }
 
     @EnvironmentObject private var devices: DeviceManager
     @EnvironmentObject private var gallery: GalleryModel
@@ -14,6 +14,9 @@ struct RootView: View {
         } detail: {
             switch selection ?? .gallery {
             case .gallery: GalleryView()
+            case .favorites: GalleryView(favoritesOnly: true)
+            case .map: MapView()
+            case .duplicates: DuplicatesView()
             case .device: DeviceView()
             }
         }
@@ -25,6 +28,15 @@ struct RootView: View {
                 Label("Photos", systemImage: "photo.on.rectangle.angled")
                     .badge(gallery.items.count)
                     .tag(Section.gallery)
+                Label("Favorites", systemImage: "heart")
+                    .badge(gallery.favoriteIDs.count)
+                    .tag(Section.favorites)
+                Label("Map", systemImage: "map")
+                    .tag(Section.map)
+            }
+            SwiftUI.Section("Tools") {
+                Label("Duplicates", systemImage: "square.on.square")
+                    .tag(Section.duplicates)
             }
             SwiftUI.Section("Devices") {
                 HStack(spacing: 8) {
