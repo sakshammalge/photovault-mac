@@ -3,6 +3,7 @@ import SwiftUI
 
 /// Full-window viewer: arrow keys move between items, Esc closes.
 struct ViewerView: View {
+    @EnvironmentObject private var gallery: GalleryModel
     let items: [GalleryItem]
     @Binding var index: Int
     let close: () -> Void
@@ -28,6 +29,7 @@ struct ViewerView: View {
                 Button("Close", action: close).keyboardShortcut(.cancelAction)
                 Button("Previous") { step(-1) }.keyboardShortcut(.leftArrow, modifiers: [])
                 Button("Next") { step(1) }.keyboardShortcut(.rightArrow, modifiers: [])
+                Button("Favorite") { gallery.toggleFavorite(item) }.keyboardShortcut("f", modifiers: [])
             }
             .opacity(0).frame(width: 0, height: 0)
         }
@@ -50,6 +52,10 @@ struct ViewerView: View {
                 .disabled(index == 0)
             Button { step(1) } label: { Image(systemName: "chevron.right") }
                 .disabled(index == items.count - 1)
+            Button { gallery.toggleFavorite(item) } label: {
+                Image(systemName: gallery.isFavorite(item) ? "heart.fill" : "heart")
+            }
+            .help("Favorite")
             Button {
                 NSWorkspace.shared.activateFileViewerSelecting([item.url])
             } label: { Image(systemName: "folder") }
