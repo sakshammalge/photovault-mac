@@ -113,7 +113,7 @@ private struct VideoPane: View {
 
     var body: some View {
         Group {
-            if let player { VideoPlayer(player: player) } else { Color.clear }
+            if let player { PlayerView(player: player) } else { Color.clear }
         }
         .onAppear {
             let player = AVPlayer(url: url)
@@ -124,5 +124,22 @@ private struct VideoPane: View {
         .onReceive(NotificationCenter.default.publisher(for: .AVPlayerItemDidPlayToEndTime)) { _ in
             onFinish?()
         }
+    }
+}
+
+/// AVKit's player in an NSViewRepresentable. SwiftUI's `VideoPlayer` aborts at launch
+/// in an unbundled SwiftPM executable (it can't resolve AVPlayerView's metadata).
+private struct PlayerView: NSViewRepresentable {
+    let player: AVPlayer
+
+    func makeNSView(context: Context) -> AVPlayerView {
+        let view = AVPlayerView()
+        view.player = player
+        view.controlsStyle = .floating
+        return view
+    }
+
+    func updateNSView(_ view: AVPlayerView, context: Context) {
+        if view.player !== player { view.player = player }
     }
 }
